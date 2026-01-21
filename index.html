@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Sopa de Letras</title>
+<style>
+body {
+	font-family: Arial, sans-serif;
+	margin: 0;
+	padding: 0;
+	text-align: center;
+	background: #f5f5f5;
+}
+
+header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 10px;
+	background: #2c3e50;
+	color: white;
+}
+
+header h1 {
+	margin: 0;
+	font-size: 1.8em;
+}
+
+#menuBtn {
+	font-size: 22px;
+	cursor: pointer;
+}
+
+#menu {
+	display: none;
+	background: #ecf0f1;
+	padding: 12px;
+	border-bottom: 2px solid #ccc;
+	max-width: 500px;
+	margin: auto;
+	border-radius: 6px;
+}
+
+#menu.show {
+	display: block;
+}
+
+#menu .row {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	margin-bottom: 10px;
+	flex-wrap: wrap;
+}
+
+#menu label {
+	font-size: 14px;
+}
+
+main {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 20px;
+	padding: 10px;
+}
+
+#grid-container {
+	position: relative;
+	overflow: auto;
+	border: 1px solid #ccc;
+	padding: 2px;
+	background: white;
+	border-radius: 6px;
+}
+
+#grid {
+	display: grid;
+	gap: 4px;
+}
+
+.cell {
+	width: 36px;
+	height: 36px;
+	border: 1px solid #333;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: bold;
+	user-select: none;
+	cursor: pointer;
+}
+
+.selected {
+	background: lightblue;
+}
+
+.found {
+	background: lightgreen;
+}
+
+.temp {
+	background: #a0d0ff;
+}
+
+#grid.disabled .cell {
+	pointer-events: none;
+}
+
+#overlay {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 22px;
+	font-weight: bold;
+	background: rgba(255, 255, 255, 0.85);
+	z-index: 10;
+	text-align: center;
+	flex-direction: column;
+	display: none;
+}
+
+#overlay span {
+	color: blue;
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+#words {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	max-width: 220px;
+	justify-content: center;
+}
+
+@media(min-width:700px) {
+	#words {
+		flex-direction: column;
+	}
+}
+
+.found-word {
+	color: gray;
+	text-decoration: line-through;
+}
+
+button {
+	cursor: pointer;
+	padding: 4px 8px;
+	border: none;
+	background: #3498db;
+	color: white;
+	border-radius: 4px;
+	font-weight: bold;
+}
+
+input[type=number] {
+	width: 60px;
+	padding: 2px;
+	border: 1px solid #ccc;
+	border-radius: 4px;
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>Sopa de Letras</h1>
+    <div id="menuBtn">☰</div>
+</header>
+
+<div id="menu">
+    <div class="row">
+        <label>Ancho <input type="number" id="cols" value="10" min="6" max="16"></label>
+        <label><input type="checkbox" id="same" checked> Mismo alto</label>
+        <label id="heightContainer">Alto <input type="number" id="rows" value="10" min="6" max="16"></label>
+    </div>
+    <div class="row">
+        <label>Palabras <input type="number" id="numWords" value="5" min="3" max="10"></label>
+        <label><input type="checkbox" id="allowReverse" checked> Permitir invertidas</label>
+    </div>
+    <button onclick="startGame()">Nueva partida</button>
+</div>
+
+<main>
+    <div id="grid-container">
+        <div id="grid">
+            <div id="overlay">
+                <div>¡Completado!</div>
+                <div><span id="restart">Jugar otra vez</span></div>
+            </div>
+        </div>
+    </div>
+    <div>
+        <h3>Palabras</h3>
+        <div id="words"></div>
+    </div>
+</main>
+
+<script src="words.js"></script>
+<script>
+const MAX_ATTEMPTS = 5;
+if (typeof WORD_BANK === "undefined") {
+    throw new Error("No se ha cargado words.js.");
+}
+
+let COLS, ROWS, WORDS;
+let grid, foundCells, foundWords;
+let startCell=null, selectedCells=[], isMouseDown=false;
+
+const gridElement = document.getElementById("grid");
+const overlay = document.getElementById("overlay");
+const restartBtn = document.getElementById("restart");
+const wordsElement = document.getElementById("words");
+
+const menuBtn=document.getElementById("menuBtn");
+const menu=document.getElementById("menu");
+const colsInput=document.getElementById("cols");
+const rowsInput=document.getElementById("rows");
+const sameInput=document.getElementById("same");
+const heightContainer=document.getElementById("heightContainer");
+const numWordsInput=document.getElementById("numWords");
+const allowReverseInput=document.getElementById("allowReverse");
+
+menuBtn.onclick=()=>menu.classList.toggle("show");
+
+function updateHeightField(){
+    if(sameInput.checked){heightContainer.style.display="none"; rowsInput.value=colsInput.value;}
+    else{heightContainer.style.display="inline-block";}
+}
+sameInput.onchange=updateHeightField;
+colsInput.oninput=updateHeightField;
+
+function shuffle(a){return a.sort(()=>Math.random()-0.5);}
+function inBounds(r,c){return r>=0 && r<ROWS && c>=0 && c<COLS;}
+
+function startGame(){
+    COLS=+colsInput.value; ROWS=+rowsInput.value;
+    const numWords = +numWordsInput.value;
+    const allowReverse = allowReverseInput.checked;
+
+    // Filtramos las palabras que caben en la sopa según ancho/alto
+    const maxLength = Math.max(COLS, ROWS);
+    const possibleWords = WORD_BANK.filter(w => w.length >=4 && w.length <= maxLength);
+    WORDS = shuffle([...possibleWords]).slice(0, numWords);
+
+    const dirs = allowReverse
+        ? [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]
+        : [[0,1],[1,0],[1,1],[1,-1]];
+
+    let success=false;
+    for(let attempt=0; attempt<MAX_ATTEMPTS && !success; attempt++){
+        grid = Array.from({length:ROWS}, ()=>Array(COLS).fill(""));
+        success = WORDS.every(w => placeWordExhaustive(w, dirs));
+    }
+
+    if(!success){alert("No se pudo generar la sopa con esta configuración."); return;}
+
+    foundCells=new Set(); foundWords=new Set(); selectedCells=[];
+    fillRandom();
+    drawGrid();
+    drawWords();
+    overlay.style.display="none";
+    gridElement.classList.remove("disabled");
+}
+
+// ---------- Función corregida ----------
+function placeWordExhaustive(word, dirs){
+    let positions=[];
+    for(let r=0;r<ROWS;r++){
+        for(let c=0;c<COLS;c++){
+            for(const [dr,dc] of dirs) positions.push({r,c,dr,dc});
+        }
+    }
+    shuffle(positions);
+    for(const p of positions){
+        let ok=true, cells=[];
+        for(let i=0;i<word.length;i++){
+            const rr=p.r+p.dr*i, cc=p.c+p.dc*i;
+            if(!inBounds(rr,cc) || (grid[rr][cc] && grid[rr][cc]!==word[i])){ok=false; break;}
+            cells.push([rr,cc]);
+        }
+        if(ok){
+            cells.forEach(([r,c], idx)=> grid[r][c] = word[idx]);
+            return true;
+        }
+    }
+    return false;
+}
+// ---------- fin ----------
+
+function fillRandom(){
+    const L="ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(!grid[r][c])grid[r][c]=L[Math.floor(Math.random()*L.length)];
+}
+
+function drawGrid(){
+    gridElement.innerHTML=""; gridElement.appendChild(overlay);
+    gridElement.style.gridTemplateColumns=`repeat(${COLS},36px)`;
+    gridElement.style.gap=`4px`;
+
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+        const d=document.createElement("div");
+        d.className="cell"; d.textContent=grid[r][c];
+        d.dataset.r=r; d.dataset.c=c;
+        d.onmousedown=e=>{isMouseDown=true; startCell=d; updateSelection(e);};
+        gridElement.appendChild(d);
+    }
+}
+
+document.addEventListener("mousemove", e=>isMouseDown && updateSelection(e));
+document.addEventListener("mouseup", ()=>{
+    if(isMouseDown) checkSelection();
+    isMouseDown=false; startCell=null;
+});
+
+function updateSelection(e){
+    if(!startCell) return;
+    clearSelection();
+    const end=document.elementFromPoint(e.clientX,e.clientY);
+    if(!end || !end.classList.contains("cell")) return;
+
+    const r1=+startCell.dataset.r, c1=+startCell.dataset.c;
+    const r2=+end.dataset.r, c2=+end.dataset.c;
+
+    const dr=Math.sign(r2-r1), dc=Math.sign(c2-c1);
+    const len=Math.max(Math.abs(r2-r1), Math.abs(c2-c1));
+    let r=r1, c=c1;
+    const cells=gridElement.querySelectorAll(".cell");
+    for(let i=0;i<=len;i++){
+        if(!inBounds(r,c)) break;
+        const cell=cells[r*COLS + c];
+        if(!cell) break;
+        if(!cell.classList.contains("found")) cell.classList.add("selected");
+        selectedCells.push(cell);
+        r+=dr; c+=dc;
+    }
+}
+
+function clearSelection(){selectedCells.forEach(c=>c.classList.remove("selected","temp")); selectedCells=[];}
+
+function checkSelection(){
+    const w=selectedCells.map(c=>c.textContent).join("");
+    const r=w.split("").reverse().join("");
+    const m=WORDS.find(x=>!foundWords.has(x)&&(x===w||x===r));
+    if(!m){clearSelection(); return;}
+    foundWords.add(m);
+    selectedCells.forEach(c=>{c.classList.remove("selected","temp"); c.classList.add("found"); foundCells.add(`${c.dataset.r},${c.dataset.c}`);});
+    document.getElementById("w-"+m).classList.add("found-word");
+    if(foundWords.size===WORDS.length){gridElement.classList.add("disabled"); overlay.style.display="flex";}
+    selectedCells=[];
+}
+
+function drawWords(){
+    wordsElement.innerHTML="";
+    WORDS.forEach(w=>{const s=document.createElement("span"); s.id="w-"+w; s.textContent=w; wordsElement.appendChild(s);});
+}
+
+restartBtn.onclick=startGame;
+updateHeightField();
+startGame();
+</script>
+</body>
+</html>
