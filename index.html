@@ -5,6 +5,33 @@
 <title>Sopa de Letras</title>
 
 <style>
+
+/* ===== TOP BAR ===== */
+
+#topbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    height: 48px;
+    background: #1f3a5f;
+    color: white;
+}
+
+#topbar h1 {
+    font-size: 26px;
+}
+
+#menuToggle {
+    /* position: absolute; */
+    /* left: 10px; */
+    background: none;
+    border: none;
+    color: white;
+    font-size: 22px;
+    cursor: pointer;
+}
+
 body {
     font-family: Arial, sans-serif;
     text-align: center;
@@ -12,24 +39,49 @@ body {
     padding: 0;
 }
 
-h1 {
-    font-size: 26px;
-    margin: 12px 0;
+/* ===== MENU ===== */
+
+#menu {
+    max-width: 320px;
+    margin: 8px auto;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #f4f6f8;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: none;
 }
 
-#controls {
+.menu-row {
     display: flex;
-    justify-content: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 0;
+    gap: 6px;
 }
+
+.menu-row label {
+    flex: 1;
+    text-align: left;
+}
+
+.menu-row input[type="number"] {
+    width: 70px;
+}
+
+.menu-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+/* ===== GRID ===== */
 
 #grid {
     display: grid;
     justify-content: center;
     margin: 10px auto;
     position: relative;
+	touch-action: none;
 }
 
 .cell {
@@ -45,12 +97,19 @@ h1 {
     background: white;
 }
 
-.selected { background-color: lightblue; }
-.found { background-color: lightgreen !important; }
+.selected {
+    background-color: lightblue !important;
+}
+
+.found {
+    background-color: lightgreen !important;
+}
 
 #grid.disabled .cell {
     pointer-events: none;
 }
+
+/* ===== OVERLAY ===== */
 
 #overlay {
     position: absolute;
@@ -72,10 +131,12 @@ h1 {
     cursor: pointer;
 }
 
+/* ===== WORDS ===== */
+
 #words {
     display: flex;
-    justify-content: center;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 8px;
     margin-bottom: 20px;
 }
@@ -88,24 +149,47 @@ h1 {
     text-decoration: line-through;
     color: gray;
 }
+
 </style>
 </head>
 
 <body>
 
-<h1>Sopa de Letras</h1>
+<header id="topbar">
+    <button id="menuToggle" aria-label="Menú">☰</button>
+    <h1>Sopa de Letras</h1>
+</header>
 
-<div id="controls">
-    Tamaño:
-    <input type="number" id="size" value="10" min="6" max="16">
-    Palabras:
-    <input type="number" id="numWords" value="8" min="3" max="20">
-    <label>
-        <input type="checkbox" id="allowReverse" checked>
-        Invertidas
-    </label>
-    <button onclick="startGame()">Nueva partida</button>
-    <button id="debugBtn">🛠 Modo debug</button>
+<div id="menu">
+    <div class="menu-row">
+        <label>Ancho</label>
+        <input type="number" id="width" value="10" min="6" max="30">
+    </div>
+
+    <div class="menu-row">
+        <label>
+            <input type="checkbox" id="sameHeight" checked>
+            Mismo alto
+        </label>
+        <input type="number" id="height" value="10" min="6" max="20" disabled>
+    </div>
+
+    <div class="menu-row">
+        <label>Palabras</label>
+        <input type="number" id="numWords" value="8" min="3" max="40">
+    </div>
+
+    <div class="menu-row">
+        <label>
+            <input type="checkbox" id="allowReverse" checked>
+            Permitir invertidas
+        </label>
+    </div>
+
+    <div class="menu-actions">
+        <button onclick="startGame()">Nueva partida</button>
+        <button id="debugBtn">🛠 Modo debug</button>
+    </div>
 </div>
 
 <div id="grid">
@@ -115,13 +199,13 @@ h1 {
     </div>
 </div>
 
+<span style="font-weight: bold; text-decoration: underline;">Palabras a buscar</span>
 <div id="words"></div>
 
 <script src="words.js"></script>
 <script>
-/* ===========================
-   CONFIGURACIÓN
-=========================== */
+
+/* ================= CONFIG ================= */
 
 if (typeof WORD_BANK === "undefined") {
     throw new Error("WORD_BANK no está definido. ¿Has cargado words.js?");
@@ -139,50 +223,44 @@ const COLORS = [
     "#ffe5d9","#edf6f9","#fefae0","#e9edc9","#ccd5ae"
 ];
 
-/* ===========================
-   ESTADO GLOBAL
-=========================== */
+/* ================= STATE ================= */
 
-let SIZE, WORDS;
+let WIDTH, HEIGHT, WORDS;
 let grid = [];
-let foundCells = new Set();
-let foundWords = new Set();
 let placedWords = [];
-let cellColors = {}; // "r,c" -> color
-
+let cellColors = {};
+let foundWords = new Set();
 let DEBUG_MODE = false;
 
 let startCell = null;
 let selectedCells = [];
 let isMouseDown = false;
 
-/* ===========================
-   ELEMENTOS DOM
-=========================== */
+/* ================= DOM ================= */
 
 const gridElement = document.getElementById("grid");
 const overlay = document.getElementById("overlay");
 const restartBtn = document.getElementById("restart");
 const wordsElement = document.getElementById("words");
+const numWordsInput = document.getElementById("numWords");
+const allowReverseInput = document.getElementById("allowReverse");
 
-/* ===========================
-   UTILIDADES
-=========================== */
+/* ================= UTILS ================= */
 
 function shuffle(a) { return a.sort(() => Math.random() - 0.5); }
-function inBounds(r, c) { return r >= 0 && r < SIZE && c >= 0 && c < SIZE; }
+function inBounds(r, c) { return r >= 0 && r < HEIGHT && c >= 0 && c < WIDTH; }
 
-/* ===========================
-   JUEGO
-=========================== */
+/* ================= GAME ================= */
 
 function startGame() {
-    SIZE = +size.value;
+    WIDTH = +width.value;
+    HEIGHT = sameHeight.checked ? WIDTH : +height.value;
+
     const numWords = +numWordsInput.value;
     const allowReverse = allowReverseInput.checked;
 
     WORDS = shuffle([...WORD_BANK])
-        .filter(w => w.length >= 4 && w.length <= SIZE)
+        .filter(w => w.length >= 4 && w.length <= Math.max(WIDTH, HEIGHT))
         .slice(0, numWords)
         .sort((a,b) => b.length - a.length);
 
@@ -190,13 +268,13 @@ function startGame() {
 
     const dirs = allowReverse
         ? [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]
-        : [[0,1],[1,0],[1,1],[1,-1]];
+        : [[0,1],[1,0],[1,1]];
 
     let success = false;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS && !success; attempt++) {
         console.log(`🔄 Intento ${attempt}`);
-        grid = Array.from({ length: SIZE }, () => Array(SIZE).fill(""));
+        grid = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(""));
         placedWords = [];
         cellColors = {};
         success = WORDS.every(w => placeWordExhaustive(w, dirs));
@@ -207,7 +285,6 @@ function startGame() {
         return;
     }
 
-    foundCells.clear();
     foundWords.clear();
     selectedCells = [];
 
@@ -219,37 +296,28 @@ function startGame() {
     gridElement.classList.remove("disabled");
 }
 
-/* ===========================
-   COLOCACIÓN DE PALABRAS
-=========================== */
+/* ================= WORD PLACEMENT ================= */
 
 function placeWordExhaustive(word, dirs) {
     let crossing = [];
     let free = [];
 
-    for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
+    for( let r = 0; r < HEIGHT; r++) {
+        for (let c = 0; c < WIDTH; c++) {
             for (const [dr, dc] of dirs) {
                 let ok = true;
                 let overlaps = 0;
-
                 for (let i = 0; i < word.length; i++) {
                     const rr = r + dr * i;
                     const cc = c + dc * i;
-
                     if (!inBounds(rr, cc)) { ok = false; break; }
-
                     if (grid[rr][cc]) {
                         if (grid[rr][cc] !== word[i]) { ok = false; break; }
                         overlaps++;
                     }
                 }
-
                 if (!ok) continue;
-
-                const entry = { r, c, dr, dc };
-                if (overlaps > 0) crossing.push(entry);
-                else free.push(entry);
+                (overlaps > 0 ? crossing : free).push({r, c, dr, dc});
             }
         }
     }
@@ -271,33 +339,28 @@ function placeWordExhaustive(word, dirs) {
     shuffle(candidates);
     const { r, c, dr, dc } = candidates[0];
     const color = COLORS[placedWords.length % COLORS.length];
-    let cells = [];
 
     for (let i = 0; i < word.length; i++) {
         const rr = r + dr * i;
         const cc = c + dc * i;
         grid[rr][cc] = word[i];
-        cells.push([rr, cc]);
-
         const key = `${rr},${cc}`;
         if (!(key in cellColors)) {
             cellColors[key] = color;
         }
     }
 
-    placedWords.push({ word, cells, color });
+    placedWords.push(word);
     console.log(`✅ "${word}" colocada`);
     return true;
 }
 
-/* ===========================
-   RELLENO Y DIBUJO
-=========================== */
+/* ================= FILL AND DRAW ================= */
 
 function fillRandom() {
     const L = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
-    for (let r = 0; r < SIZE; r++)
-        for (let c = 0; c < SIZE; c++)
+    for (let r = 0; r < HEIGHT; r++)
+        for (let c = 0; c < WIDTH; c++)
             if (!grid[r][c])
                 grid[r][c] = L[Math.floor(Math.random() * L.length)];
 }
@@ -305,11 +368,11 @@ function fillRandom() {
 function drawGrid() {
     gridElement.innerHTML = "";
     gridElement.appendChild(overlay);
-    gridElement.style.gridTemplateColumns = `repeat(${SIZE},${CELL_SIZE}px)`;
+    gridElement.style.gridTemplateColumns = `repeat(${WIDTH},${CELL_SIZE}px)`;
     gridElement.style.gap = `${CELL_GAP}px`;
 
-    for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
+    for (let r = 0; r < HEIGHT; r++) {
+        for (let c = 0; c < WIDTH; c++) {
             const d = document.createElement("div");
             d.className = "cell";
             d.textContent = grid[r][c];
@@ -325,11 +388,20 @@ function drawGrid() {
                 startCell = d;
                 updateSelection(e);
             };
+            d.ontouchstart = e => {
+                e.preventDefault();
+                isMouseDown = true;
+                startCell = d;
+                const t = e.touches[0];
+                updateSelection({ clientX: t.clientX, clientY: t.clientY });
+            };
 
             gridElement.appendChild(d);
         }
     }
 }
+
+/* ================= SELECTION ================= */
 
 document.addEventListener("mousemove", e => isMouseDown && updateSelection(e));
 document.addEventListener("mouseup", () => {
@@ -337,16 +409,27 @@ document.addEventListener("mouseup", () => {
     isMouseDown = false;
     startCell = null;
 });
+document.addEventListener("touchmove", e => {
+    if (!isMouseDown) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    updateSelection({ clientX: t.clientX, clientY: t.clientY });
+}, { passive: false });
 
-/* ===========================
-   SELECCIÓN
-=========================== */
+document.addEventListener("touchend", () => {
+    if (isMouseDown) checkSelection();
+    isMouseDown = false;
+    startCell = null;
+});
+
 
 function updateSelection(e) {
     if (!startCell) return;
     clearSelection();
 
-    const end = document.elementFromPoint(e.clientX, e.clientY);
+    const x = e.clientX;
+    const y = e.clientY;
+    const end = document.elementFromPoint(x, y);
     if (!end || !end.classList.contains("cell")) return;
 
     const r1 = +startCell.dataset.r, c1 = +startCell.dataset.c;
@@ -355,19 +438,36 @@ function updateSelection(e) {
     const dr = r2 - r1;
     const dc = c2 - c1;
 
-    let stepR = Math.sign(dr);
-    let stepC = Math.sign(dc);
+    const absR = Math.abs(dr);
+    const absC = Math.abs(dc);
 
-    if (Math.abs(dr) > Math.abs(dc)) stepC = 0;
-    else if (Math.abs(dc) > Math.abs(dr)) stepR = 0;
+    let stepR = 0;
+    let stepC = 0;
+    let steps = 0;
+
+    const diagError = Math.abs(absR - absC);
+    const diagThreshold = Math.max(absR, absC) * 0.35;
+
+    if (diagError <= diagThreshold && absR > 0 && absC > 0) {
+        stepR = Math.sign(dr);
+        stepC = Math.sign(dc);
+        steps = Math.min(absR, absC);
+    } else if (absR >= absC) {
+        stepR = Math.sign(dr);
+        stepC = 0;
+        steps = absR;
+    } else {
+        stepR = 0;
+        stepC = Math.sign(dc);
+        steps = absC;
+    }
 
     let r = r1, c = c1;
-    while (inBounds(r, c)) {
-        const cell = gridElement.children[r * SIZE + c + 1];
+    for (let i = 0; i <= steps; i++) {
+        if (!inBounds(r, c)) break;
+        const cell = gridElement.children[r * WIDTH + c + 1];
         cell.classList.add("selected");
         selectedCells.push(cell);
-
-        if (r === r2 && c === c2) break;
         r += stepR;
         c += stepC;
     }
@@ -392,7 +492,6 @@ function checkSelection() {
     selectedCells.forEach(c => {
         c.classList.remove("selected");
         c.classList.add("found");
-        foundCells.add(`${c.dataset.r},${c.dataset.c}`);
     });
 
     document.getElementById("w-" + m).classList.add("found-word");
@@ -407,7 +506,8 @@ function checkSelection() {
 
 function drawWords() {
     wordsElement.innerHTML = "";
-    WORDS.forEach(w => {
+    const sortedWords = [...WORDS].sort((a,b) => a.localeCompare(b));
+    sortedWords.forEach(w => {
         const s = document.createElement("span");
         s.id = "w-" + w;
         s.textContent = w;
@@ -415,9 +515,7 @@ function drawWords() {
     });
 }
 
-/* ===========================
-   CONTROLES
-=========================== */
+/* ================= CONTROLS ================= */
 
 restartBtn.onclick = startGame;
 
@@ -427,9 +525,17 @@ document.getElementById("debugBtn").onclick = () => {
     drawGrid();
 };
 
-const size = document.getElementById("size");
-const numWordsInput = document.getElementById("numWords");
-const allowReverseInput = document.getElementById("allowReverse");
+menuToggle.onclick = () => {
+    menu.style.display = menu.style.display === "block" ? "none" : "block";
+};
+
+sameHeight.onchange = () => {
+    height.disabled = sameHeight.checked;
+    if (sameHeight.checked) height.value = width.value;
+};
+width.oninput = () => {
+    if (sameHeight.checked) height.value = width.value;
+};
 
 startGame();
 </script>
